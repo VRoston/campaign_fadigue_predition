@@ -1,0 +1,14 @@
+services:
+  dashboard-fadiga:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    volumes:
+      - /home/vroston/data:/app/data:ro
+    environment:
+      - STREAMLIT_SERVER_HEADLESS=true
+      - PYTHONUNBUFFERED=1
+      - CAMPAIGN_DATA_PATH=/app/data/raw_campaigns
+      - CAMPAIGN_MODEL_PATH=/app/data/models/modelo_fadiga.joblib

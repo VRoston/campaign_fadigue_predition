@@ -1,0 +1,20 @@
+# Python cache/build
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Streamlit cache
+.streamlit/
+
+# Local data and trained models (sensitive)
+data/
+*.parquet
+*.joblib
+
+# OS/editor
+.DS_Store
+.vscode/
