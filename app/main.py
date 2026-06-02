@@ -12,12 +12,13 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from app.models.predictor import enrich_with_fatigue_prediction
+from app.models.predictor import enrich_with_fatigue_prediction, get_model_info
 from app.utils.data_engine import (
     get_all_ad_accounts,
     get_campaigns_by_account,
     load_raw_campaign_history,
 )
+from app.ui.dashboard import render_schema_page, render_overview
 
 st.set_page_config(page_title="Dashboard de Fadiga de Campanhas", layout="wide")
 st.title("Dashboard de Fadiga de Campanhas")
@@ -45,6 +46,13 @@ if accounts_df.empty:
     st.warning(
         "Nenhum arquivo parquet encontrado em data/raw_campaigns ou schema inválido."
     )
+    st.stop()
+
+# Allow the user to switch between the Dashboard and the Schema explorer
+page = st.sidebar.radio("Página", ["Dashboard", "Schema"], index=0)
+
+if page == "Schema":
+    render_schema_page()
     st.stop()
 
 account_options = accounts_df["adAccount_id"].tolist()
@@ -98,43 +106,9 @@ enriched_df = enrich_with_fatigue_prediction(history_df)
 
 st.subheader(campaign_labels.get(selected_campaign_id, "Campanha"))
 
-has_fatigue = "fadiga_prevista" in enriched_df.columns and not enriched_df[
-    "fadiga_prevista"
-].isna().all()
-
-if has_fatigue and "context_timestamp" in enriched_df.columns:
-    fig = px.line(
-        enriched_df,
-        x="context_timestamp",
-        y="fadiga_prevista",
-        title="Evolução temporal da fadiga prevista",
-        markers=True,
-    )
-    st.plotly_chart(fig, use_container_width=True)
-elif "context_timestamp" in enriched_df.columns:
-    numeric_cols = [
-        col
-        for col in enriched_df.select_dtypes(include=["number"]).columns
-        if col != "fadiga_prevista"
-    ]
-
-    if numeric_cols:
-        selected_metric = st.selectbox("Métrica para visualização", numeric_cols, index=0)
-        fig = px.line(
-            enriched_df,
-            x="context_timestamp",
-            y=selected_metric,
-            title=f"Evolução temporal: {selected_metric}",
-            markers=True,
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption(
-            "Modelo de fadiga ausente/inválido. Exibindo uma métrica numérica da campanha."
-        )
-    else:
-        st.info("Não há colunas numéricas para plotar nesta campanha.")
-else:
-    st.info("A coluna context_timestamp não foi encontrada no histórico carregado.")
+# Render the richer dashboard overview using componentized UI
+model_info = get_model_info()
+render_overview(enriched_df, model_info=model_info, campaign_id=selected_campaign_id)
 
 with st.expander("Visualizar dados brutos"):
     st.dataframe(enriched_df, use_container_width=True)

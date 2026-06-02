@@ -37,6 +37,55 @@ CAMPAIGN_MODEL_PATH=/home/vroston/data/models/modelo_fadiga.joblib \
 streamlit run app/main.py
 ```
 
+### Colocando artefatos do modelo
+
+O app procura por artefatos de modelo de forma flexível. Você pode colocar os arquivos de modelo de duas maneiras:
+
+- Diretório externo (recomendado): coloque os artefatos em `/home/victor/data/models/<campaign_id>/` com os nomes esperados:
+  - `xgb_alert_model.joblib` (modelo joblib)
+  - `label_encoders.joblib` (opcional)
+  - `model_summary.json` (opcional, com `alert_threshold`, `metrics_holdout_auc`, etc.)
+    Em seguida, defina `CAMPAIGN_MODEL_ROOT=/home/victor/data/models` e `CAMPAIGN_RESULT_PATH=/home/victor/data/result_campaigns`.
+
+- Diretório embutido no repositório (conveniência para desenvolvimento): o app também detecta artefatos colocados em `app/models/`.
+  Por exemplo, você pode adicionar `app/models/xgb_alert_model.joblib`, `app/models/label_encoders.joblib` e `app/models/model_summary.json`.
+
+Exemplo de execução apontando para um diretório de modelos e destino de resultados:
+
+```bash
+CAMPAIGN_DATA_PATH=/home/victor/data/raw_campaigns \
+CAMPAIGN_MODEL_ROOT=/home/victor/data/models \
+CAMPAIGN_RESULT_PATH=/home/victor/data/result_campaigns \
+streamlit run app/main.py
+```
+
+### Usando um arquivo `.env`
+
+Para facilitar o run em máquinas diferentes, crie um arquivo `.env` na raiz do projeto com as variáveis necessárias (existe `.env.example` como modelo). Exemplos de conteúdo:
+
+```bash
+# .env (exemplo)
+export CAMPAIGN_DATA_PATH=/home/victor/data/raw_campaigns
+export CAMPAIGN_MODEL_ROOT=/home/victor/data/models
+export CAMPAIGN_RESULT_PATH=/home/victor/data/result_campaigns
+export ALERT_THRESHOLD=0.16821053624153137
+```
+
+Depois carregue as variáveis e execute:
+
+```bash
+source .env
+streamlit run app/main.py
+```
+
+Nota: `.env` está incluído em `.gitignore` para evitar comitar caminhos/segredos locais. Use `.env.example` como referência.
+
+Observação: se os artefatos estão em `app/models/` (dentro do repositório), não é necessário definir `CAMPAIGN_MODEL_ROOT`.
+
+Dependências adicionais
+
+- Para carregar o `xgboost` e os artefatos serializados pode ser necessário instalar `scikit-learn` e `xgboost`. Elas já foram adicionadas ao `requirements.txt`.
+
 ## Como executar com Docker
 
 ```bash
@@ -71,3 +120,14 @@ Recomendações adicionais:
 ```bash
 ./scripts/link_data.sh /home/vroston/data/raw_campaigns
 ```
+
+## Novas Páginas da UI
+
+Adicionei duas melhorias na UI (Streamlit):
+
+- **Dashboard (padrão)**: visão geral por campanha com KPIs, timeline (risco de fadiga), lista de alertas, análise de drivers, saúde do modelo e recomendações de ação.
+- **Schema / Mapeamento de Colunas**: página que agrega um mapeamento das colunas presentes nos arquivos Parquet (amostra) mostrando dtypes e contagens não-nulas — útil para entender espaços em branco / NaNs esperados.
+
+Alterne entre as páginas usando o seletor `Página` na barra lateral do Streamlit.
+
+Observações sobre NaNs: os dados provenientes da API Meta podem conter muitos valores ausentes por design. A UI indica a presença de valores ausentes e não quebra — o modelo e as heurísticas tratam NaNs quando necessário.
