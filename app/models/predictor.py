@@ -14,7 +14,12 @@ def _default_model_path() -> Path:
     env = os.environ.get("CAMPAIGN_MODEL_PATH")
     if env:
         return Path(env).expanduser().resolve()
-    return Path(__file__).with_name("modelo_fadiga.joblib")
+    # Try v4_lagged location first
+    repo_root = Path(__file__).resolve().parents[2]
+    v4_model = repo_root.parent / "models" / "v4_lagged" / "lgbm_fatigue_v4.joblib"
+    if v4_model.exists():
+        return v4_model
+    return Path(__file__).with_name("lgbm_fatigue_v4.joblib")
 
 
 @lru_cache(maxsize=1)
