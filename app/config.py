@@ -16,11 +16,27 @@ SUMMARY_FILE = MODEL_DIR / "model_summary.json"
 DATASET_FILE = MODEL_DIR / "dataset_72h.parquet"
 
 # Load model summary
-with open(SUMMARY_FILE) as f:
-    MODEL_SUMMARY = json.load(f)
+try:
+    with open(SUMMARY_FILE) as f:
+        MODEL_SUMMARY = json.load(f)
+except FileNotFoundError:
+    raise RuntimeError(
+        f"Model summary not found: {SUMMARY_FILE}\n"
+        f"Set CAMPAIGN_MODEL_ROOT env var or check that the model files are in place."
+    )
+except json.JSONDecodeError as e:
+    raise RuntimeError(f"Model summary is not valid JSON ({SUMMARY_FILE}): {e}")
 
 # Load model
-MODEL = joblib.load(MODEL_FILE)
+try:
+    MODEL = joblib.load(MODEL_FILE)
+except FileNotFoundError:
+    raise RuntimeError(
+        f"Model file not found: {MODEL_FILE}\n"
+        f"Set CAMPAIGN_MODEL_ROOT env var or check that the model files are in place."
+    )
+except Exception as e:
+    raise RuntimeError(f"Failed to load model from {MODEL_FILE}: {e}") from e
 
 # Extract key info from summary
 THRESHOLD = MODEL_SUMMARY["threshold"]
