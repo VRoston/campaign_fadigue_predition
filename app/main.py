@@ -1,4 +1,4 @@
-"""Main Streamlit app for campaign fatigue prediction."""
+"""Streamlit app for campaign prognosis prediction (72h)."""
 
 from __future__ import annotations
 
@@ -10,32 +10,42 @@ project_root = Path(__file__).resolve().parents[1]
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-import streamlit as st
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=project_root / ".env", override=False)
 
-from app.ui.metrics_page import render_metrics_page
-from app.ui.campaign_page import render_campaign_page
+import streamlit as st
+import os
 
 # Page configuration
 st.set_page_config(
-    page_title="Predição de Fadiga - Meta Ads",
+    page_title="Prognóstico de Campanha 72h",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-st.title("📊 Predição de Fadiga de Campanhas")
-st.caption("LightGBM v4 | Modelo de risco com 48h de antecedência")
+# Custom CSS for dark theme
+st.markdown("""
+<style>
+[data-testid="stMetricValue"] {
+    font-size: 32px;
+    font-weight: bold;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # Sidebar navigation
 with st.sidebar:
-    st.header("Navegação")
+    st.header("📊 Navegação")
     page = st.radio(
         "Selecione uma página:",
-        ["Métricas do Modelo", "Análise de Campanha"],
+        ["Resultados do Modelo", "Análise de Campanha"],
         index=0,
     )
 
-# Render selected page
-if page == "Métricas do Modelo":
-    render_metrics_page()
+# Import page renderers
+if page == "Resultados do Modelo":
+    from app.pages.model_results import render_model_results
+    render_model_results()
 elif page == "Análise de Campanha":
-    render_campaign_page()
+    from app.pages.campaign_analysis import render_campaign_analysis
+    render_campaign_analysis()
