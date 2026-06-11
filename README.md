@@ -1,133 +1,150 @@
-# Dashboard Local de Fadiga de Campanhas
+# Prognóstico de Campanha — Modelo 72h
 
-Aplicacao local em Streamlit para analisar fadiga de campanhas (Meta Ads) lendo arquivos Parquet em `data/raw_campaigns`.
+Dashboard Streamlit para prognóstico de campanhas de Meta Ads. O modelo classifica campanhas em **potencial** ou **risco** baseado no comportamento das primeiras 72 horas.
+
+## Modelo
+
+**Prognosis 72h v2** — Classificador binário LightGBM que prevê se uma campanha vai atingir o target de eficiência (CPA):
+
+- **ROC-AUC holdout**: 0.9571
+- **Precision**: 82.5% | **Recall**: 92.6%
+- **26 features** calculadas nas primeiras 72h
+- **Threshold calibrado**: 0.2178 (F2-score)
+
+Artefatos em `/data/models/prognosis_72h/`:
+- `lgbm_prognosis_72h.joblib` — modelo treinado
+- `model_summary.json` — métricas e feature importance
+- `dataset_72h.parquet` — dataset de treinamento
 
 ## Requisitos
 
 - Python 3.11+
-- Arquivos Parquet flat em `data/raw_campaigns/`
+- Arquivos Parquet horários em `data/raw_campaigns/`
+- Modelo e artefatos em `/data/models/prognosis_72h/`
 
-Colunas esperadas nos Parquets:
+## Setup
 
-- `adAccount_id`
-- `adAccount_name`
-- `campaign_id`
-- `campaign_name`
-- `context_timestamp`
-
-## Como executar (local)
-
-1. Instale as dependencias:
+### 1. Instale as dependências
 
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Coloque os arquivos parquet em `data/raw_campaigns/` ou aponte para uma pasta externa.
+### 2. Configure o arquivo `.env`
 
-3. Modelos: por segurança, não versionar arquivos `.joblib`. Coloque seu modelo em
-   uma pasta externa (por exemplo `/home/vroston/data/models/modelo_fadiga.joblib`) e
-   defina a variável de ambiente `CAMPAIGN_MODEL_PATH` apontando para ele.
-
-4. Rode a aplicacao:
+Crie ou edite o arquivo `.env` na raiz do projeto:
 
 ```bash
-CAMPAIGN_DATA_PATH=/home/vroston/data/raw_campaigns \
-CAMPAIGN_MODEL_PATH=/home/vroston/data/models/modelo_fadiga.joblib \
+# .env
+export CAMPAIGN_DATA_PATH=/home/vroston/data/raw_campaigns
+export CAMPAIGN_MODEL_ROOT=/home/vroston/data/models
+```
+
+(Já existe um `.env` com esses valores padrão.)
+
+### 3. Rode a aplicação
+
+```bash
 streamlit run app/main.py
 ```
 
-### Colocando artefatos do modelo
-
-O app procura por artefatos de modelo de forma flexível. Você pode colocar os arquivos de modelo de duas maneiras:
-
-- Diretório externo (recomendado): coloque os artefatos em `/home/victor/data/models/<campaign_id>/` com os nomes esperados:
-  - `xgb_alert_model.joblib` (modelo joblib)
-  - `label_encoders.joblib` (opcional)
-  - `model_summary.json` (opcional, com `alert_threshold`, `metrics_holdout_auc`, etc.)
-    Em seguida, defina `CAMPAIGN_MODEL_ROOT=/home/victor/data/models` e `CAMPAIGN_RESULT_PATH=/home/victor/data/result_campaigns`.
-
-- Diretório embutido no repositório (conveniência para desenvolvimento): o app também detecta artefatos colocados em `app/models/`.
-  Por exemplo, você pode adicionar `app/models/xgb_alert_model.joblib`, `app/models/label_encoders.joblib` e `app/models/model_summary.json`.
-
-Exemplo de execução apontando para um diretório de modelos e destino de resultados:
+Ou carregue o `.env` primeiro:
 
 ```bash
-CAMPAIGN_DATA_PATH=/home/victor/data/raw_campaigns \
-CAMPAIGN_MODEL_ROOT=/home/victor/data/models \
-CAMPAIGN_RESULT_PATH=/home/victor/data/result_campaigns \
-streamlit run app/main.py
+source .env && streamlit run app/main.py
 ```
 
-### Usando um arquivo `.env`
+A aplicação abre em `http://localhost:8501` por padrão.
 
-Para facilitar o run em máquinas diferentes, crie um arquivo `.env` na raiz do projeto com as variáveis necessárias (existe `.env.example` como modelo). Exemplos de conteúdo:
+## Estrutura da Aplicação
+
+### Página 1: Resultados do Modelo
+
+Exibe a saúde geral do modelo:
+- **ROC-AUC**: 0.9571
+- **Precision/Recall**: cards com as métricas holdout
+- **Feature Importance**: top 15 features (gráfico horizontal)
+- **Cross-Validation**: tabela com os 5 folds (AUC, PR-AUC, iterações)
+- **Matriz de Confusão**: 2×2 com TP/FP/FN/TN
+
+### Página 2: Análise de Campanha
+
+Análise preditiva por campanha:
+
+1. **Seleção**: escolha uma campanha do dropdown
+2. **Resultado**: card com cor (verde = potencial, vermelho = risco)
+   - Probabilidade em destaque
+   - 3 métricas rápidas (Gasto 72h, Spend vs Budget, CPC)
+3. **Evolução**: gráfico de linha mostrando a probabilidade ao longo das 72h
+4. **Detalhes**: tabela expansível com as 26 features por categoria
+
+## Tratamento de Dados
+
+### Features (26 no total)
+
+**Volume:**
+- `spend_72h`, `spend_daily_avg`, `nc_72h` (cliques), `nic_72h` (conversões)
+
+**Eficiência:**
+- `cpc_72h`, `cpa_72h`, `cc_72h` (tax de conv.), `nic_per_100_spend`
+
+**Utilização:**
+- `budget_daily`, `spend_vs_budget`, `burn_rate`
+
+**Target:**
+- `budget_vs_target`, `cpa_vs_target`, `cpc_vs_target`, `target_configured`
+
+**Trajetória:**
+- `cpc_trend_72h`, `spend_trend_72h`
+
+**Configuração:**
+- `active_ads`, `pct_ads_active`, `active_adsets`
+- `is_cbo`, `is_sales`, `is_leads`, `is_engagement`, `is_ecommerce`, `is_infoprodutos`
+
+### Filtragem
+
+- Apenas snapshots com `campaign_status == 'ACTIVE'`
+- Apenas primeiras 72h (`age_hours <= 72`)
+- Mínimo 3 snapshots para análise confiável
+
+### Tratamento de NaN
+
+- Features ausentes são preenchidas com NaN (exibidas como "—")
+- Divisões seguras usam clipping (máximo 10x)
+
+## Segurança
+
+- ✓ Processamento 100% local (sem APIs externas)
+- ✓ Dados nunca são salvos (cache por sessão apenas)
+- ✓ Modelos e dados em `.gitignore`
+- ✓ Arquivo `.env` ignorado (caminhos e secrets)
+
+Use a variável `CAMPAIGN_DATA_PATH` para apontar para a pasta **centralizada** de dados:
 
 ```bash
-# .env (exemplo)
-export CAMPAIGN_DATA_PATH=/home/victor/data/raw_campaigns
-export CAMPAIGN_MODEL_ROOT=/home/victor/data/models
-export CAMPAIGN_RESULT_PATH=/home/victor/data/result_campaigns
-export ALERT_THRESHOLD=0.16821053624153137
+export CAMPAIGN_DATA_PATH=/home/vroston/data/raw_campaigns
 ```
 
-Depois carregue as variáveis e execute:
+## Troubleshooting
 
-```bash
-source .env
-streamlit run app/main.py
-```
+**Erro: "Model not found"**
+- Verifique `CAMPAIGN_MODEL_ROOT` no `.env`
+- Confirme que `/data/models/prognosis_72h/lgbm_prognosis_72h.joblib` existe
 
-Nota: `.env` está incluído em `.gitignore` para evitar comitar caminhos/segredos locais. Use `.env.example` como referência.
+**Erro: "No campaigns found"**
+- Verifique `CAMPAIGN_DATA_PATH`
+- Certifique-se de que os `.parquet` existem em `data/raw_campaigns/`
 
-Observação: se os artefatos estão em `app/models/` (dentro do repositório), não é necessário definir `CAMPAIGN_MODEL_ROOT`.
+**Análise lenta**
+- A primeira carga de campanhas leva ~1 minuto (cache TTL: 1 hora)
+- Snapshots são cacheados por campanha
+- Use `streamlit cache clear` se desejar resetar
 
-Dependências adicionais
+## Desenvolvimento
 
-- Para carregar o `xgboost` e os artefatos serializados pode ser necessário instalar `scikit-learn` e `xgboost`. Elas já foram adicionadas ao `requirements.txt`.
-
-## Como executar com Docker
-
-```bash
-docker compose up --build
-```
-
-O compose foi configurado para montar `/home/vroston/data` em `/app/data` como somente leitura
-e define automaticamente `CAMPAIGN_DATA_PATH=/app/data/raw_campaigns` e
-`CAMPAIGN_MODEL_PATH=/app/data/models/modelo_fadiga.joblib` dentro do container.
-
-## Fluxo do Dashboard
-
-- Sidebar com filtro de `adAccount`.
-- Ao selecionar a conta, o app lista apenas as campanhas dessa conta.
-- Ao selecionar a campanha, o historico e carregado e ordenado por `context_timestamp`.
-- Se o modelo estiver disponivel, a coluna `fadiga_prevista` e adicionada.
-- Se nao houver modelo valido, o app continua funcionando e exibe uma metrica numerica.
-
-## Observacoes de seguranca
-
-- Processamento 100% local (sem APIs externas).
-- `.gitignore` ignora `data/`, `*.parquet` e `*.joblib` para proteger dados e modelos.
-
-Recomendações adicionais:
-
-- Não adicione dados ou modelos ao repositório. Se você já cometeu esses arquivos,
-  use `git rm --cached <path>` para removê-los do índice e depois faça um commit.
-- Use a variável `CAMPAIGN_DATA_PATH` para apontar para a pasta centralizada
-  (ex: `/home/vroston/data/raw_campaigns`). O código fará apenas leitura dessa pasta.
-- Para criar um link simbólico local em vez de exportar a variável, execute:
-
-```bash
-./scripts/link_data.sh /home/vroston/data/raw_campaigns
-```
-
-## Novas Páginas da UI
-
-Adicionei duas melhorias na UI (Streamlit):
-
-- **Dashboard (padrão)**: visão geral por campanha com KPIs, timeline (risco de fadiga), lista de alertas, análise de drivers, saúde do modelo e recomendações de ação.
-- **Schema / Mapeamento de Colunas**: página que agrega um mapeamento das colunas presentes nos arquivos Parquet (amostra) mostrando dtypes e contagens não-nulas — útil para entender espaços em branco / NaNs esperados.
-
-Alterne entre as páginas usando o seletor `Página` na barra lateral do Streamlit.
-
-Observações sobre NaNs: os dados provenientes da API Meta podem conter muitos valores ausentes por design. A UI indica a presença de valores ausentes e não quebra — o modelo e as heurísticas tratam NaNs quando necessário.
+O código está estruturado em:
+- `app/main.py` — entry point e navegação
+- `app/pages/model_results.py` — página de métricas do modelo
+- `app/pages/campaign_analysis.py` — página de análise de campanha
+- `app/features.py` — cálculo das 26 features
+- `app/config.py` — carregamento do modelo e configurações

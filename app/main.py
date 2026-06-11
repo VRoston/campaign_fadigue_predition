@@ -1,114 +1,72 @@
+"""Main Streamlit app for campaign prognosis prediction."""
+
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-# Ensure project root is on sys.path so `from app.models...` works
+# Ensure project root is on sys.path
 project_root = Path(__file__).resolve().parents[1]
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-import pandas as pd
-import plotly.express as px
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=project_root / ".env", override=False)
+
 import streamlit as st
 
-from app.models.predictor import enrich_with_fatigue_prediction, get_model_info
-from app.utils.data_engine import (
-    get_all_ad_accounts,
-    get_campaigns_by_account,
-    load_raw_campaign_history,
+# Page configuration - must be called first
+st.set_page_config(
+    page_title="Prognóstico de Campanha 72h",
+    layout="wide",
+    initial_sidebar_state="expanded",
+    menu_items=None,
 )
-from app.ui.dashboard import render_schema_page, render_overview
 
-st.set_page_config(page_title="Dashboard de Fadiga de Campanhas", layout="wide")
-st.title("Dashboard de Fadiga de Campanhas")
-st.caption("Leitura 100% local de arquivos Parquet usando DuckDB")
+from app.config import MODEL_SUMMARY, HOLDOUT_METRICS
 
+_ds = MODEL_SUMMARY.get("dataset", {})
+_n_total = _ds.get("n_total", "—")
+_auc = HOLDOUT_METRICS.get("roc_auc", 0)
+_precision = HOLDOUT_METRICS.get("precision", 0) * 100
+_recall = HOLDOUT_METRICS.get("recall", 0) * 100
 
-@st.cache_data(show_spinner=False)
-def cached_ad_accounts() -> pd.DataFrame:
-    return get_all_ad_accounts()
+# Main page
+st.markdown("# 🚀 Prognóstico de Campanha 72h")
+st.markdown("---")
 
+st.markdown(f"""
+## Bem-vindo!
 
-@st.cache_data(show_spinner=False)
-def cached_campaigns(account_id: str) -> pd.DataFrame:
-    return get_campaigns_by_account(account_id)
+Este dashboard analisa campanhas de Meta Ads e prevê se elas têm potencial
+de atingir o target de eficiência nos **primeiros 72 horas** de operação.
 
+### 📊 O Modelo
+- **Tipo:** Classificador Binário LightGBM
+- **Features:** 26 métricas das primeiras 72h
+- **Desempenho:** ROC-AUC {_auc:.4f}, Precision {_precision:.1f}%, Recall {_recall:.1f}%
+- **Dataset:** {_n_total:,} campanhas reais (nov/2025 - mai/2026)
 
-@st.cache_data(show_spinner=True)
-def cached_campaign_history(campaign_id: str) -> pd.DataFrame:
-    return load_raw_campaign_history(campaign_id)
+### 🎯 Como Usar
+1. **Resultados do Modelo** → Veja as métricas, feature importance e validação
+2. **Análise de Campanha** → Analise uma campanha específica
 
+### 📈 Fluxo de Análise
+- Selecione uma Ad Account
+- Escolha uma campanha
+- Clique em "Analisar"
+- Veja a probabilidade e métricas detalhadas
 
-accounts_df = cached_ad_accounts()
+---
 
-if accounts_df.empty:
-    st.warning(
-        "Nenhum arquivo parquet encontrado em data/raw_campaigns ou schema inválido."
-    )
-    st.stop()
+**Navegue usando o menu ao lado →**
+""")
 
-# Allow the user to switch between the Dashboard and the Schema explorer
-page = st.sidebar.radio("Página", ["Dashboard", "Schema"], index=0)
+st.markdown("---")
 
-if page == "Schema":
-    render_schema_page()
-    st.stop()
-
-account_options = accounts_df["adAccount_id"].tolist()
-account_labels = {
-    row["adAccount_id"]: f"{row['adAccount_name']} ({row['adAccount_id']})"
-    for _, row in accounts_df.iterrows()
-}
-
-with st.sidebar:
-    st.header("Filtros")
-    selected_account_id = st.selectbox(
-        "Ad Account",
-        options=account_options,
-        format_func=lambda value: account_labels.get(value, value),
-    )
-
-campaigns_df = cached_campaigns(selected_account_id)
-if campaigns_df.empty:
-    st.info("Nenhuma campanha encontrada para a ad account selecionada.")
-    st.stop()
-
-campaign_options = campaigns_df["campaign_id"].tolist()
-campaign_labels = {
-    row["campaign_id"]: f"{row['campaign_name']} ({row['campaign_id']})"
-    for _, row in campaigns_df.iterrows()
-}
-
-with st.sidebar:
-    selected_campaign_id = st.selectbox(
-        "Campanha",
-        options=campaign_options,
-        format_func=lambda value: campaign_labels.get(value, value),
-    )
-
-try:
-    history_df = cached_campaign_history(selected_campaign_id)
-except Exception as exc:
-    st.error(f"Falha ao carregar histórico da campanha: {exc}")
-    st.stop()
-
-if history_df.empty:
-    st.info("Sem histórico para a campanha selecionada.")
-    st.stop()
-
-if "context_timestamp" in history_df.columns:
-    history_df["context_timestamp"] = pd.to_datetime(
-        history_df["context_timestamp"], errors="coerce", utc=True
-    )
-
-enriched_df = enrich_with_fatigue_prediction(history_df)
-
-st.subheader(campaign_labels.get(selected_campaign_id, "Campanha"))
-
-# Render the richer dashboard overview using componentized UI
-model_info = get_model_info()
-render_overview(enriched_df, model_info=model_info, campaign_id=selected_campaign_id)
-
-with st.expander("Visualizar dados brutos"):
-    st.dataframe(enriched_df, use_container_width=True)
+# Footer
+st.markdown("""
+<div style="text-align: center; color: gray; font-size: 12px; margin-top: 50px;">
+Desenvolvido com Streamlit + LightGBM
+</div>
+""", unsafe_allow_html=True)
